@@ -102,6 +102,8 @@ function modal_form_settings_init(): void {
 	register_setting( 'modal_form_options', 'modal_form_rgpd_field' );
 	register_setting( 'modal_form_options', 'modal_form_head_email', '' );
 	register_setting( 'modal_form_options', 'modal_form_footer_email', '' );
+	register_setting( 'modal_form_options', 'modal_form_pages' );
+	register_setting( 'modal_form_options', 'modal_form_posts' );
 	add_settings_section( 'modal_form_main', 'Main Settings', 'modal_form_fields_callback', 'modal-form-options' );
 }
 
@@ -137,6 +139,57 @@ function modal_form_fields_callback(): void {
                 <label for="modal_form_footer_email"><?= __( 'Email text footer', 'modal-form-brochure' ) ?></label>
                 <textarea id="modal_form_footer_email"
                           name="modal_form_footer_email"><?= esc_attr( $footer_email ?? '' ) ?></textarea>
+            </div>
+            <div id="content-select">
+                <label for="modal_form_pages"><?= __( 'Select Pages:', 'modal-form-brochure' ) ?></label>
+				<?php
+				// Get selected pages
+				$selected_pages = get_option( 'modal_form_pages' );
+				if ( ! is_array( $selected_pages ) ) {
+					$selected_pages = array();
+				}
+				$args         = array(
+					'name'             => 'modal_form_pages[]',
+					'selected'         => $selected_pages,
+					'echo'             => 0,
+					'show_option_none' => __( '- Select -', 'modal-form-brochure' ),
+				);
+				$pages_select = wp_dropdown_pages( $args );
+				$pages_select = str_replace( '<select', '<select multiple', $pages_select );
+				echo $pages_select;
+				?>
+            </div>
+            <div id="content-select-posts">
+                <label for="modal_form_posts"><?= __( 'Select Posts:', 'modal-form-brochure' ) ?></label>
+				<?php
+				// Get selected posts
+				$selected_posts = get_option( 'modal_form_posts' );
+				if ( ! is_array( $selected_posts ) ) {
+					$selected_posts = array();
+				}
+				// Query for all posts
+				$args        = array(
+					'post_type'   => [ 'post', 'page' ],
+					'post_status' => 'publish',
+					'nopaging'    => true,
+				);
+				$posts_query = new WP_Query( $args );
+				?>
+                <select id="modal_form_posts" name="modal_form_posts[]" multiple>
+                    <option value=""><?= __( '- Select -', 'modal-form-brochure' ) ?></option>
+					<?php
+					if ( $posts_query->have_posts() ) {
+						while ( $posts_query->have_posts() ) {
+							$posts_query->the_post();
+							$selected = in_array( get_the_ID(), $selected_posts, true ) ? 'selected' : '';
+							?>
+                            <option value="<?php the_ID(); ?>" <?= $selected ?>><?php the_title(); ?></option>
+							<?php
+						}
+						wp_reset_postdata();
+					}
+					?>
+                </select>
             </div>
             <div id="recipient-fields">
                 <label for="email_field"><?= __( 'User Email Field:', 'modal-form-brochure' ) ?></label>
@@ -228,7 +281,7 @@ add_action( 'admin_menu', static function () {
 	add_options_page( 'Modal Form Brochure Options', 'Modal Form Options', 'manage_options', 'modal-form-options', 'modal_form_options_page' );
 } );
 
-function modal_form_options_validate( $input ): array {
+function modal_form_options_validate( &$input ): array {
 	// Initialize the new array that will hold the sanitize values
 	$new_input = array();
 
@@ -258,6 +311,18 @@ function modal_form_options_validate( $input ): array {
 
 		if ( isset( $input['modal_form_rgpd_field'] ) ) {
 			$new_input['modal_form_rgpd_field'] = sanitize_title( $input['modal_form_rgpd_field'] );
+		}
+
+		// Validation for pages
+		if ( isset( $input['modal_form_pages'] ) ) {
+			$pages                     = array_map( 'absint', $input['modal_form_pages'] );
+			$input['modal_form_pages'] = array_filter( $pages, 'get_post' );
+		}
+
+		// Validation for posts
+		if ( isset( $input['modal_form_posts'] ) ) {
+			$posts                     = array_map( 'absint', $input['modal_form_posts'] );
+			$input['modal_form_posts'] = array_filter( $posts, 'get_post' );
 		}
 	}
 
