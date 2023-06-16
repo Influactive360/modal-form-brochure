@@ -43,6 +43,8 @@ function send_form_email( $data ): void {
 		if ( $key === 'rgpd' ) {
 			continue;
 		}
+		// transformer les _ en espace
+		$key           = str_replace( '_', ' ', $key );
 		$message_admin .= ucwords( $key ) . ': ' . $value . "<br>\n\r";
 	}
 
@@ -54,14 +56,14 @@ function send_form_email( $data ): void {
 
 	$message .= $footer_email;
 	$error   = '';
-	if ( ! wp_mail( $to, $subject, $message, [ 'Content-Type: text/html; charset=UTF-8', 'From:' . $to_admin ] ) ) {
-		$error .= "Email to user error<br>";
-	}
 	if ( ! wp_mail( $to_admin, $subject_admin, $message_admin, [
 		'Content-Type: text/html; charset=UTF-8',
 		'From:' . $to_admin
 	] ) ) {
 		$error .= "Email to admin error<br>";
+	}
+	if ( ! wp_mail( $to, $subject, $message, [ 'Content-Type: text/html; charset=UTF-8', 'From:' . $to_admin ] ) ) {
+		$error .= "Email to user error<br>";
 	}
 	if ( $error === '' ) {
 		echo __( "Email sent successfully", "modal-form-brochure" );

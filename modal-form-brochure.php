@@ -22,7 +22,8 @@ function load_admin_scripts( $hook ): void {
 	if ( 'settings_page_modal-form-options' !== $hook ) {
 		return;
 	}
-	wp_enqueue_script( 'modal-form-brochure-admin', plugin_dir_url( __FILE__ ) . 'assets/js/admin.js', array(), '1.0', true );
+	wp_enqueue_media(); // Ajoutez cette ligne
+	wp_enqueue_script( 'modal-form-brochure-admin', plugin_dir_url( __FILE__ ) . 'assets/js/admin.js', array( 'jquery' ), '1.0', true );
 	wp_enqueue_style( 'modal-form-brochure-admin', plugin_dir_url( __FILE__ ) . 'assets/css/admin-style.css' );
 }
 
@@ -33,15 +34,31 @@ function add_modal_form(): void {
 	$title       = get_option( 'modal_form_title', 'Do you want to download this product sheet?' );
 	$description = get_option( 'modal_form_description', 'In order to receive your product sheet, please fill in your information below, we will send you a link by email to download it.' );
 	$submit_text = get_option( 'modal_form_submit_text', 'Submit' );
+	$file        = get_option( 'modal_form_file_select', false );
+	$pages       = get_option( 'modal_form_pages', array() );
+	$posts       = get_option( 'modal_form_posts', array() );
+	$display     = "";
+
+	if ( ! empty( $pages['modal_form_pages'] ) || ! empty( $posts['modal_form_posts'] ) ) {
+		if ( ( ! empty( $pages['modal_form_pages'] ) && in_array( get_the_ID(), $pages['modal_form_pages'], true ) ) || ( ! empty( $posts['modal_form_posts'] ) && in_array( get_the_ID(), $posts['modal_form_posts'], true ) ) ) {
+			$display = "style='display: block;'";
+		}
+	}
+
 
 	ob_start(); ?>
-    <div id="modal-form" class="modal-form">
+    <div id="modal-form" class="modal-form" <?= $display ?>>
         <div class="modal-content">
             <span id="modal-form-close" class="close">&times;</span>
             <h2><?= $title ?></h2>
             <hr>
             <p class="description"><?= $description ?></p>
             <form action="<?= plugin_dir_url( __FILE__ ) . 'process-form.php' ?>" method="post">
+				<?php
+				if ( $file ) {
+					echo '<input type="hidden" name="file" value="' . $file . '">';
+				}
+				?>
 				<?php foreach ( $fields as $field ) : ?>
                     <div class="form-group" data-type="<?= $field['type'] ?>">
                         <label for="<?= $field['name'] ?>"
@@ -99,11 +116,13 @@ function modal_form_settings_init(): void {
 	register_setting( 'modal_form_options', 'modal_form_email_recipient' );
 	register_setting( 'modal_form_options', 'modal_form_email_field' );
 	register_setting( 'modal_form_options', 'modal_form_name_field' );
+	register_setting( 'modal_form_options', 'modal_form_name_field' );
 	register_setting( 'modal_form_options', 'modal_form_rgpd_field' );
 	register_setting( 'modal_form_options', 'modal_form_head_email', '' );
 	register_setting( 'modal_form_options', 'modal_form_footer_email', '' );
-	register_setting( 'modal_form_options', 'modal_form_pages' );
-	register_setting( 'modal_form_options', 'modal_form_posts' );
+	register_setting( 'modal_form_options', 'modal_form_posts', 'modal_posts_select_validate' );
+	register_setting( 'modal_form_options', 'modal_form_pages', 'modal_pages_select_validate' );
+	register_setting( 'modal_form_options', 'modal_form_file_select' );
 	add_settings_section( 'modal_form_main', 'Main Settings', 'modal_form_fields_callback', 'modal-form-options' );
 }
 
@@ -120,6 +139,7 @@ function modal_form_fields_callback(): void {
 	$rgpd             = get_option( 'modal_form_rgpd_field', 'I agree to receive emails from this website' );
 	$head_email       = get_option( 'modal_form_head_email', 'Hello,' );
 	$footer_email     = get_option( 'modal_form_footer_email', 'Goodbye.' );
+	$file             = get_option( 'modal_form_file_select' );
 	?>
     <div class="columns-brochure">
         <div class="column-one">
@@ -140,27 +160,52 @@ function modal_form_fields_callback(): void {
                 <textarea id="modal_form_footer_email"
                           name="modal_form_footer_email"><?= esc_attr( $footer_email ?? '' ) ?></textarea>
             </div>
+
+            <div id="select_file_general_from_library">
+                <label for="modal_form_file_select"><?= __( 'Select File to to show a modal at load (also default file to not use ?file=FILEID for general case):', 'modal-form-brochure' ) ?></label>
+                <input type="text" id="modal_form_file_select" name="modal_form_file_select" readonly
+                       value="<?= $file ?>">
+                <button type="button" id="upload-button"><?= __( 'Select File', 'modal-form-brochure' ) ?></button>
+            </div>
+
             <div id="content-select">
-                <label for="modal_form_pages"><?= __( 'Select Pages:', 'modal-form-brochure' ) ?></label>
+                <label for="modal_form_pages"><?= __( 'Select Pages to show a modal at load:', 'modal-form-brochure' ) ?></label>
 				<?php
 				// Get selected pages
 				$selected_pages = get_option( 'modal_form_pages' );
 				if ( ! is_array( $selected_pages ) ) {
 					$selected_pages = array();
 				}
-				$args         = array(
-					'name'             => 'modal_form_pages[]',
-					'selected'         => $selected_pages,
-					'echo'             => 0,
-					'show_option_none' => __( '- Select -', 'modal-form-brochure' ),
+				// Query for all posts
+				$args        = array(
+					'post_type'   => 'page',
+					'post_status' => 'publish',
+					'nopaging'    => true,
 				);
-				$pages_select = wp_dropdown_pages( $args );
-				$pages_select = str_replace( '<select', '<select multiple', $pages_select );
-				echo $pages_select;
+				$pages_query = new WP_Query( $args );
+				if ( ! isset( $selected_pages['modal_form_pages'] ) ) {
+					$selected_pages['modal_form_pages'] = array();
+				}
 				?>
+                <select id="modal_form_pages" name="modal_form_pages[]" multiple>
+                    <option value=""><?= __( '- Select -', 'modal-form-brochure' ) ?></option>
+					<?php
+					if ( $pages_query->have_posts() ) {
+						while ( $pages_query->have_posts() ) {
+							$pages_query->the_post();
+							$selected = in_array( get_the_ID(), $selected_pages['modal_form_pages'], true ) ? 'selected' : '';
+							?>
+                            <option value="<?php the_ID(); ?>" <?= $selected ?>><?php the_title(); ?></option>
+							<?php
+						}
+						wp_reset_postdata();
+					}
+					?>
+                </select>
             </div>
+
             <div id="content-select-posts">
-                <label for="modal_form_posts"><?= __( 'Select Posts:', 'modal-form-brochure' ) ?></label>
+                <label for="modal_form_posts"><?= __( 'Select Posts to show a modal at load:', 'modal-form-brochure' ) ?></label>
 				<?php
 				// Get selected posts
 				$selected_posts = get_option( 'modal_form_posts' );
@@ -174,6 +219,9 @@ function modal_form_fields_callback(): void {
 					'nopaging'    => true,
 				);
 				$posts_query = new WP_Query( $args );
+				if ( ! isset( $selected_pages['modal_form_posts'] ) ) {
+					$selected_pages['modal_form_posts'] = array();
+				}
 				?>
                 <select id="modal_form_posts" name="modal_form_posts[]" multiple>
                     <option value=""><?= __( '- Select -', 'modal-form-brochure' ) ?></option>
@@ -181,7 +229,7 @@ function modal_form_fields_callback(): void {
 					if ( $posts_query->have_posts() ) {
 						while ( $posts_query->have_posts() ) {
 							$posts_query->the_post();
-							$selected = in_array( get_the_ID(), $selected_posts, true ) ? 'selected' : '';
+							$selected = in_array( get_the_ID(), $selected_posts['modal_form_posts'], true ) ? 'selected' : '';
 							?>
                             <option value="<?php the_ID(); ?>" <?= $selected ?>><?php the_title(); ?></option>
 							<?php
@@ -281,7 +329,7 @@ add_action( 'admin_menu', static function () {
 	add_options_page( 'Modal Form Brochure Options', 'Modal Form Options', 'manage_options', 'modal-form-options', 'modal_form_options_page' );
 } );
 
-function modal_form_options_validate( &$input ): array {
+function modal_form_options_validate( $input ): array {
 	// Initialize the new array that will hold the sanitize values
 	$new_input = array();
 
@@ -312,18 +360,32 @@ function modal_form_options_validate( &$input ): array {
 		if ( isset( $input['modal_form_rgpd_field'] ) ) {
 			$new_input['modal_form_rgpd_field'] = sanitize_title( $input['modal_form_rgpd_field'] );
 		}
+	}
 
-		// Validation for pages
-		if ( isset( $input['modal_form_pages'] ) ) {
-			$pages                     = array_map( 'absint', $input['modal_form_pages'] );
-			$input['modal_form_pages'] = array_filter( $pages, 'get_post' );
-		}
+	return $new_input;
+}
 
+function modal_posts_select_validate( $input ): array {
+	// Initialize the new array that will hold the sanitize values
+	$new_input = array();
+
+	if ( is_array( $input ) ) {
 		// Validation for posts
-		if ( isset( $input['modal_form_posts'] ) ) {
-			$posts                     = array_map( 'absint', $input['modal_form_posts'] );
-			$input['modal_form_posts'] = array_filter( $posts, 'get_post' );
-		}
+		$posts                         = array_map( 'absint', $input );
+		$new_input['modal_form_posts'] = array_filter( $posts, 'get_post' );
+	}
+
+	return $new_input;
+}
+
+function modal_pages_select_validate( $input ): array {
+	// Initialize the new array that will hold the sanitize values
+	$new_input = array();
+
+	if ( is_array( $input ) ) {
+		// Validation for pages
+		$pages                         = array_map( 'absint', $input );
+		$new_input['modal_form_pages'] = array_filter( $pages, 'get_post' );
 	}
 
 	return $new_input;
