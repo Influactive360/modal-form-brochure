@@ -2,7 +2,7 @@
 /*
 Plugin Name: Modal Form Brochure
 Description: A simple plugin that displays a modal with a form when the user clicks on a link with the id #brochure and a parameter ?file=FILE_ID.
-Version: 1.0
+Version: 1.1
 Author: Influactive
 Author URI: https://influactive.com
 */
