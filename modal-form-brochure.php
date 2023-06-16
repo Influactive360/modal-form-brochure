@@ -169,7 +169,7 @@ function modal_form_fields_callback(): void {
 				}
 				// Query for all posts
 				$args        = array(
-					'post_type'   => [ 'post', 'page' ],
+					'post_type'   => 'post',
 					'post_status' => 'publish',
 					'nopaging'    => true,
 				);
