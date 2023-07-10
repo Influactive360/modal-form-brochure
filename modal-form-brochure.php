@@ -405,3 +405,10 @@ add_action( 'plugins_loaded', 'load_modal_form_textdomain' );
 function load_modal_form_textdomain(): void {
 	load_plugin_textdomain( 'modal-form-brochure', false, dirname( plugin_basename( __FILE__ ) ) . '/languages/' );
 }
+
+add_filter('wp_mail_from', 'wp_mail_from');
+
+function wp_mail_from($content_type): string
+{
+    return get_option('modal_form_email_recipient', get_bloginfo('admin_email'));
+}
